@@ -7,6 +7,7 @@ Created on Fri Jan 19 00:04:34 2018
 import os
 import pandas as pd
 import numpy as np
+import networkx as nx
     
 class Dataset():
     """ This class contains the dataset and functions to elaborate it """
@@ -25,14 +26,16 @@ class Dataset():
         self.ratings = pd.read_csv(ratings_path, sep='\t', header=0, skipinitialspace=True)
         self.tags = pd.read_csv(tags_path, sep='\t', header=0, index_col=0, skipinitialspace=True, encoding='latin1')
         self.tags_assign = pd.read_csv(tags_assign_path, sep='\t', header=0, skipinitialspace=True)
+        # Define variables that contains list of users ID
+        self.users = sorted(list(set(self.ratings.userID)))
         
         # Build ID translator dictionaries
         # ID: user and artists ID as they compare on the dataset
         # POS: unique sorted user/artist identifier (no holes), to use for example in matrices
         self._artistID2POS = {i:p for p,i in enumerate(self.artists.index)}
         self._artistPOS2ID = {p:i for p,i in enumerate(self.artists.index)}
-        self._userID2POS = {i:p for p,i in enumerate(set(self.ratings.userID))}
-        self._userPOS2ID = {p:i for p,i in enumerate(set(self.ratings.userID))}
+        self._userID2POS = {i:p for p,i in enumerate(self.users)}
+        self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
         
     @property
     def nuser(self):
@@ -54,28 +57,46 @@ class Dataset():
         
         # Drop users with too high max weight (looking at the distribution
         # they seems to be outliers)
-        data = group.max()
-        users_to_drop.update(data[data.weight > 200000].index)
+        d = group.max()
+        users_to_drop.update(d[d.weight > max_weight].index)
         
         # Drop users with few artists
-        data = group.nunique().artistID
-        users_to_drop.update(data[data < 10].index)
+        d = group.nunique().artistID
+        users_to_drop.update(d[d < min_nart].index)
         
         # Drop users from all the data
         self.drop_users(users_to_drop)
-        print(len(users_to_drop), ' users dropped')
+        print(len(users_to_drop), ' users dropped in weights pruning')
+        
+    def prune_friends(self, min_conn=2):
+        """ Drop users considering the social network """
+        # Build social network graph
+        G = nx.Graph(self.build_friend_friend())
+        # Extract biggest connected components
+        G = next(nx.connected_component_subgraphs(G))
+        users_to_drop = {u for u in self.users 
+                         if self.get_userPOS(u) not in list(G.node)}
+        # delete all nodes (users) with less than min_conn connections
+        degree = dict(G.degree())
+        remove = [self.get_userID(user) for user,degree in degree.items() if degree < min_conn]
+        users_to_drop.update(remove)
+        self.drop_users(users_to_drop)
+        
+        print(len(users_to_drop), ' users dropped in friendship pruning')
+        
         
     def drop_users(self, users_to_drop):
         """ Drop given users from all the dataset """
         
         self.ratings = self.ratings[~ self.ratings.userID.isin(users_to_drop)]
-        self.friends.drop(self.friends.index[list(users_to_drop)])
-        self.friends = self.friends[~ self.friends.isin(users_to_drop)]
+        self.friends.drop(users_to_drop, inplace=True)
+        self.friends = self.friends[~ self.friends.friendID.isin(users_to_drop)]
         self.tags_assign = self.tags_assign[~ self.tags_assign.userID.isin(users_to_drop)]
+        self.users = [i for i in self.users if i not in users_to_drop]
         
         # Update ID translator dictionaries
-        self._userID2POS = {i:p for p,i in enumerate(set(self.ratings.userID))}
-        self._userPOS2ID = {p:i for p,i in enumerate(set(self.ratings.userID))}
+        self._userID2POS = {i:p for p,i in enumerate(self.users)}
+        self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
         
     def normalize_weights(self):
         # Normalize weights for each user
@@ -100,6 +121,9 @@ class Dataset():
             upos1 = self.get_userPOS(index)
             upos2 = self.get_userPOS(row.friendID)
             friend_friend[upos1,upos2] = 1
+            
+        # Symmetrize matrix if it is not
+        friend_friend = np.where(friend_friend, friend_friend, friend_friend.T)
             
         return friend_friend
         
