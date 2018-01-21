@@ -13,6 +13,7 @@ import os.path
 import networkx as nx
 import scipy.sparse as sp
 from sklearn.cluster import SpectralClustering
+from sklearn.neighbors import NearestNeighbors
 import pygsp as gsp
 from Dataset import Dataset
 import pickle
@@ -22,7 +23,8 @@ gsp.plotting.BACKEND = 'matplotlib'
 
 #%% IMPORT DATA
 data = Dataset()
-#data.prune_ratings()
+data.prune_ratings()
+data.prune_friends()
 data.normalize_weights()
 
 #%% CONSTANTS
@@ -61,4 +63,6 @@ for index, row in data.ratings.iterrows():
     user_genre[upos,gpos] += row.weight
     
 #%% FIND USERS CONNECTIONS
-    #TODO: implement knn or something similar
+algo = NearestNeighbors(n_neighbors=5, metric='cosine')
+algo.fit(user_genre)
+user_user = algo.kneighbors_graph(user_genre).todense().A
