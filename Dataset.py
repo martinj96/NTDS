@@ -29,6 +29,10 @@ class Dataset():
         # Define variables that contains list of users ID
         self.users = sorted(list(set(self.ratings.userID)))
         
+        # Inizialize train and test
+        self.train = self.ratings
+        self.test = pd.DataFrame()
+        
         # Build ID translator dictionaries
         # ID: user and artists ID as they compare on the dataset
         # POS: unique sorted user/artist identifier (no holes), to use for example in matrices
@@ -100,19 +104,48 @@ class Dataset():
         
     def normalize_weights(self):
         # Normalize weights for each user
-        group = self.ratings[['userID', 'weight']].groupby('userID')
-        tots = group.sum().weight.to_dict()
-        self.ratings.weight = self.ratings.weight / [tots[u] for u in self.ratings.userID]
+        #group = self.ratings[['userID', 'weight']].groupby('userID')
+        #tots = group.sum().weight.to_dict()
+        #self.ratings.weight = self.ratings.weight / [tots[u] for u in self.ratings.userID]
         
-    def build_art_user(self):
+        # Extract ratings based on quartiles for all ratings
+        group = self.ratings.groupby('userID').weight
+        # Sort ratings from 1 to 5
+        self.ratings.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
+        # Normalize test ratings using the updated weights
+        self.test = self.ratings.iloc[self.ratings.index.isin(self.test.index)]
+        
+        # Extract ratings based on quartiles for the train ratings
+        group = self.train.groupby('userID').weight
+        # Sort ratings from 1 to 5
+        self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
+        
+        
+    def build_art_user(self, train_only=True):
         """ Build artist_user adjacency matrix using weights """
         art_user = np.zeros((self.nart, self.nuser))
-        for index, row in self.ratings.iterrows():
+        
+        # Choose as iterator all the ratings or only the ratings in the train
+        if train_only:
+            iterator = self.train
+        else:
+            iterator = self.ratings
+        
+        # Build matrix
+        for index, row in iterator.iterrows():
             apos = self.get_artistPOS(row.artistID)
             upos = self.get_userPOS(row.userID)
             art_user[apos,upos] = row.weight
             
         return art_user
+    
+    def split(self, test_ratio=0.2, seed=None):
+        """ Split data in trainset and testset """
+        N = len(self.ratings)
+        shuffled = self.ratings.sample(frac=1, random_state=seed)
+        self.train = shuffled.iloc[: round(N*(1-test_ratio))]
+        self.test = shuffled.iloc[round(N*(1-test_ratio)) :]
+        
     
     def build_friend_friend(self):
         """ Build friend_friend matrix using social network connections """
