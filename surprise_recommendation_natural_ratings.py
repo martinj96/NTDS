@@ -10,10 +10,11 @@ import pandas as pd
 import numpy as np
 import os.path
 import sklearn as skl
-from surprise import Dataset, Reader, SVD, BaselineOnly, accuracy
+from surprise import Dataset, Reader, SVD, BaselineOnly, accuracy, SVDsmooth
 from surprise.dataset import DatasetUserFolds
 from surprise.model_selection import GridSearchCV, cross_validate
 from surprise.model_selection import split
+import pygsp as gsp
 
 
 dd = ds.Dataset()
@@ -56,6 +57,17 @@ algo = SVD(n_factors=5, n_epochs=30, lr_all=1.e-3, reg_all=1.e-4)
 algo.fit(trainset)
 predictions = algo.test(testset)
 rmse = accuracy.rmse(predictions)
+"""
+
+# Test algo on specific parameters
+G = gsp.graphs.Graph(dd.build_friend_friend())
+G.compute_laplacian('normalized')
+algo = SVDsmooth(G.L.todense(), n_factors=5, n_epochs=20, lr_all=1.e-3)
+#trainset, testset = split.train_test_split(data, test_size=.17, random_state=1)
+#algo.fit(trainset)
+#predictions = algo.test(testset)
+#accuracy.rmse(predictions)
+cross_validate(algo, data, measures=['rmse'], cv=6, n_jobs=1, verbose=True)
 
 """
 # Set Grid Parameters (1.134)
@@ -78,3 +90,4 @@ grid.fit(data)
 # Print best score and best parameters
 print('Best Score: ', grid.best_score['rmse'])
 print('Best parameters: ', grid.best_params['rmse'])
+"""
