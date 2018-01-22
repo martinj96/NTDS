@@ -33,14 +33,6 @@ class Dataset():
         self.train = self.ratings
         self.test = pd.DataFrame()
         
-        # Build ID translator dictionaries
-        # ID: user and artists ID as they compare on the dataset
-        # POS: unique sorted user/artist identifier (no holes), to use for example in matrices
-        self._artistID2POS = {i:p for p,i in enumerate(self.artists.index)}
-        self._artistPOS2ID = {p:i for p,i in enumerate(self.artists.index)}
-        self._userID2POS = {i:p for p,i in enumerate(self.users)}
-        self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
-        
     @property
     def nuser(self):
         return len(self._userID2POS)
@@ -51,7 +43,7 @@ class Dataset():
     def ntag(self):
         return len(self.tags)
         
-    def prune_ratings(self, max_weight=200000, min_nart=10):
+    def prune_ratings(self, max_weight=50000, min_nart=49):
         """ Drop users considering the weights """
         
         users_to_drop = set()
@@ -72,7 +64,7 @@ class Dataset():
         self.drop_users(users_to_drop)
         print(len(users_to_drop), ' users dropped in weights pruning')
         
-    def prune_friends(self, min_conn=2):
+    def prune_friends(self, min_conn=0):
         """ Drop users considering the social network """
         # Build social network graph
         G = nx.Graph(self.build_friend_friend())
@@ -88,7 +80,6 @@ class Dataset():
         
         print(len(users_to_drop), ' users dropped in friendship pruning')
         
-        
     def drop_users(self, users_to_drop):
         """ Drop given users from all the dataset """
         
@@ -97,10 +88,6 @@ class Dataset():
         self.friends = self.friends[~ self.friends.friendID.isin(users_to_drop)]
         self.tags_assign = self.tags_assign[~ self.tags_assign.userID.isin(users_to_drop)]
         self.users = [i for i in self.users if i not in users_to_drop]
-        
-        # Update ID translator dictionaries
-        self._userID2POS = {i:p for p,i in enumerate(self.users)}
-        self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
         
     def normalize_weights(self):
         # Normalize weights for each user
@@ -120,11 +107,25 @@ class Dataset():
         # Sort ratings from 1 to 5
         self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
         
+    def init_POS_ID_translator(self):
+        """ Initialize ID translator dictionaries:
+            # ID: user and artists ID as they compare on the dataset
+            # POS: unique sorted user/artist identifier (no holes),
+                    to use for example in matrices 
+        """
+        self._artistID2POS = {i:p for p,i in enumerate(self.artists.index)}
+        self._artistPOS2ID = {p:i for p,i in enumerate(self.artists.index)}
+        self._userID2POS = {i:p for p,i in enumerate(self.users)}
+        self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
+        
         
     def build_art_user(self, train_only=True):
         """ Build artist_user adjacency matrix using weights """
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
+            
         art_user = np.zeros((self.nart, self.nuser))
-        
         # Choose as iterator all the ratings or only the ratings in the train
         if train_only:
             iterator = self.train
@@ -149,6 +150,11 @@ class Dataset():
     
     def build_friend_friend(self):
         """ Build friend_friend matrix using social network connections """
+        
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
+        
         friend_friend = np.zeros((self.nuser, self.nuser))
         for index, row in self.friends.iterrows():
             upos1 = self.get_userPOS(index)
@@ -161,13 +167,25 @@ class Dataset():
         return friend_friend
         
     def get_artistPOS(self, ID):
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
         return self._artistID2POS[ID]
 
     def get_artistID(self, POS):
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
         return self._artistPOS2ID[POS]
     
     def get_userPOS(self, ID):
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
         return self._userID2POS[ID]
 
     def get_userID(self, POS):
+        # If ID translator was not inizialized, ask for it
+        if not self._artistID2POS:
+            raise ValueError('Inizialize POS_ID translator before')
         return self._userPOS2ID[POS]
