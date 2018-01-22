@@ -51,7 +51,7 @@ class Dataset():
     def ntag(self):
         return len(self.tags)
         
-    def prune_ratings(self, max_weight=200000, min_nart=10):
+    def prune_ratings(self, max_weight=50000, min_nart=50):
         """ Drop users considering the weights """
         
         users_to_drop = set()
@@ -72,7 +72,7 @@ class Dataset():
         self.drop_users(users_to_drop)
         print(len(users_to_drop), ' users dropped in weights pruning')
         
-    def prune_friends(self, min_conn=2):
+    def prune_friends(self, min_conn=1):
         """ Drop users considering the social network """
         # Build social network graph
         G = nx.Graph(self.build_friend_friend())
