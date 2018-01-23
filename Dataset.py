@@ -125,7 +125,7 @@ class Dataset():
         # Normalize weights for each user
         group = self.ratings[['userID', 'weight']].groupby('userID')
         tots = group.max().weight.to_dict()
-        self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID]) * 5 + 1
+        self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID])
         
 #        # Extract ratings based on quartiles for all ratings
 #        group = self.ratings.groupby('userID').weight
@@ -140,7 +140,7 @@ class Dataset():
 #        self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
         
         
-    def build_art_user(self, train_only=True):
+    def build_art_user(self, train_only=False):
         """ Build artist_user adjacency matrix using weights """
         art_user = np.zeros((self.nart, self.nuser))
         
@@ -187,7 +187,7 @@ class Dataset():
             apos2 = self.get_artistPOS(row.similID)
             art_art[apos1,apos2] = row.weight
             
-        # Symmetrize matrix if it is not
+        # Since this relationship is symmetric, the values of one side of the matrix is copied to the transposed one.
         art_art = np.maximum(art_art.T, art_art)
             
         return art_art
