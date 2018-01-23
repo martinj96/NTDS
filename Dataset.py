@@ -15,6 +15,7 @@ class Dataset():
     def __init__(self, folder_path=os.path.join('.','data')):
         # Define paths of the files
         artists_path = os.path.join(folder_path,'artists.dat')
+        artconn_path = os.path.join(folder_path, 'artist_artist.csv')
         friends_path = os.path.join(folder_path, 'user_friends.dat')
         ratings_path = os.path.join(folder_path,'user_artists.dat')
         tags_path = os.path.join(folder_path,'tags.dat')
@@ -28,6 +29,14 @@ class Dataset():
         self.tags_assign = pd.read_csv(tags_assign_path, sep='\t', header=0, skipinitialspace=True)
         # Define variables that contains list of users ID
         self.users = sorted(list(set(self.ratings.userID)))
+        
+        # Import Artist-Artist network
+        self.artconn = pd.read_csv(artconn_path, sep='\t', header=0, index_col=0, skipinitialspace=True)
+        self.artconn = self.artconn[['ArtistID','Artist_id','Weight']]
+        self.artconn.rename(columns = {'ArtistID':'artistID', 'Artist_id':'similID', 'Weight':'weight'}, inplace=True)
+        self.artconn.artistID = self.artconn.artistID.astype(np.int64)
+        self.artconn.similID = self.artconn.similID.astype(np.int64)
+        self.drop_artists(set(self.artists.index) - (set(self.artconn.artistID).union(set(self.artconn.similID))))
         
         # Inizialize train and test
         self.train = self.ratings
@@ -51,7 +60,7 @@ class Dataset():
     def ntag(self):
         return len(self.tags)
         
-    def prune_ratings(self, max_weight=50000, min_nart=50):
+    def prune_ratings(self, max_weight=50000, min_nart=10):
         """ Drop users considering the weights """
         
         users_to_drop = set()
@@ -89,6 +98,16 @@ class Dataset():
         print(len(users_to_drop), ' users dropped in friendship pruning')
         
         
+    def drop_artists(self, artists_to_drop):
+        self.ratings = self.ratings[~ self.ratings.artistID.isin(artists_to_drop)]
+        self.tags_assign = self.tags_assign[~ self.tags_assign.artistID.isin(artists_to_drop)]
+        self.artists = self.artists[~ self.artists.index.isin(artists_to_drop)]
+        
+        # Update ID translator dictionaries
+        self._artistID2POS = {i:p for p,i in enumerate(self.artists.index)}
+        self._artistPOS2ID = {p:i for p,i in enumerate(self.artists.index)}
+        
+        
     def drop_users(self, users_to_drop):
         """ Drop given users from all the dataset """
         
@@ -104,21 +123,21 @@ class Dataset():
         
     def normalize_weights(self):
         # Normalize weights for each user
-        #group = self.ratings[['userID', 'weight']].groupby('userID')
-        #tots = group.sum().weight.to_dict()
-        #self.ratings.weight = self.ratings.weight / [tots[u] for u in self.ratings.userID]
+        group = self.ratings[['userID', 'weight']].groupby('userID')
+        tots = group.max().weight.to_dict()
+        self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID]) * 5 + 1
         
-        # Extract ratings based on quartiles for all ratings
-        group = self.ratings.groupby('userID').weight
-        # Sort ratings from 1 to 5
-        self.ratings.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
-        # Normalize test ratings using the updated weights
-        self.test = self.ratings.iloc[self.ratings.index.isin(self.test.index)]
-        
-        # Extract ratings based on quartiles for the train ratings
-        group = self.train.groupby('userID').weight
-        # Sort ratings from 1 to 5
-        self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
+#        # Extract ratings based on quartiles for all ratings
+#        group = self.ratings.groupby('userID').weight
+#        # Sort ratings from 1 to 5
+#        self.ratings.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
+#        # Normalize test ratings using the updated weights
+#        self.test = self.ratings.iloc[self.ratings.index.isin(self.test.index)]
+#        
+#        # Extract ratings based on quartiles for the train ratings
+#        group = self.train.groupby('userID').weight
+#        # Sort ratings from 1 to 5
+#        self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
         
         
     def build_art_user(self, train_only=True):
@@ -159,6 +178,20 @@ class Dataset():
         friend_friend = np.where(friend_friend, friend_friend, friend_friend.T)
             
         return friend_friend
+    
+    def build_art_art(self):
+        """ Build artist-artist matrix using artist network connections """
+        art_art = np.zeros((self.nart, self.nart))
+        for index, row in self.artconn.iterrows():
+            apos1 = self.get_artistPOS(row.artistID)
+            apos2 = self.get_artistPOS(row.similID)
+            art_art[apos1,apos2] = row.weight
+            
+        # Symmetrize matrix if it is not
+        art_art = np.maximum(art_art.T, art_art)
+            
+        return art_art
+        
         
     def get_artistPOS(self, ID):
         return self._artistID2POS[ID]
