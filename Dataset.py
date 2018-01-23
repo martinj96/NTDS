@@ -8,10 +8,13 @@ import os
 import pandas as pd
 import numpy as np
 import networkx as nx
-import pickle
     
 class Dataset():
-    """ This class contains the dataset and functions to elaborate it """
+    """ This class contains the dataset holder variables 
+        and the functions to elaborate it 
+        
+        Args:
+            folder_path: path where dataset files are contained"""
     
     def __init__(self, folder_path=os.path.join('.','data')):
         # Define paths of the files
@@ -28,18 +31,20 @@ class Dataset():
         self.ratings = pd.read_csv(ratings_path, sep='\t', header=0, skipinitialspace=True)
         self.tags = pd.read_csv(tags_path, sep='\t', header=0, index_col=0, skipinitialspace=True, encoding='latin1')
         self.tags_assign = pd.read_csv(tags_assign_path, sep='\t', header=0, skipinitialspace=True)
-        # Define variables that contains list of users ID
+        # Define variable that contains list of users ID
         self.users = sorted(list(set(self.ratings.userID)))
         
         # Import Artist-Artist network
         self.artconn = pd.read_csv(artconn_path, sep='\t', header=0, index_col=0, skipinitialspace=True)
+        # Reformat dataframe for better handling
         self.artconn = self.artconn[['ArtistID','Artist_id','Weight']]
         self.artconn.rename(columns = {'ArtistID':'artistID', 'Artist_id':'similID', 'Weight':'weight'}, inplace=True)
         self.artconn.artistID = self.artconn.artistID.astype(np.int64)
         self.artconn.similID = self.artconn.similID.astype(np.int64)
+        # Drop artists which are not in the given artists-artists network (pruning)
         self.drop_artists(set(self.artists.index) - (set(self.artconn.artistID).union(set(self.artconn.similID))))
         
-        # Inizialize train and test
+        # Inizialize train and test for recommendation evaluation
         self.train = self.ratings
         self.test = pd.DataFrame()
         
@@ -62,7 +67,7 @@ class Dataset():
         return len(self.tags)
         
     def prune_ratings(self, max_weight=50000, min_nart=10):
-        """ Drop users considering the weights """
+        """ Drop users considering the user-artists connections """
         
         users_to_drop = set()
 
@@ -84,12 +89,15 @@ class Dataset():
         
     def prune_friends(self, min_conn=1):
         """ Drop users considering the social network """
+        
         # Build social network graph
         G = nx.Graph(self.build_friend_friend())
+        
         # Extract biggest connected components
         G = next(nx.connected_component_subgraphs(G))
         users_to_drop = {u for u in self.users 
                          if self.get_userPOS(u) not in list(G.node)}
+                         
         # delete all nodes (users) with less than min_conn connections
         degree = dict(G.degree())
         remove = [self.get_userID(user) for user,degree in degree.items() if degree < min_conn]
@@ -100,6 +108,8 @@ class Dataset():
         
         
     def drop_artists(self, artists_to_drop):
+        """ Drop given set of artists from all the dataset """
+        
         self.ratings = self.ratings[~ self.ratings.artistID.isin(artists_to_drop)]
         self.tags_assign = self.tags_assign[~ self.tags_assign.artistID.isin(artists_to_drop)]
         self.artists = self.artists[~ self.artists.index.isin(artists_to_drop)]
@@ -110,7 +120,7 @@ class Dataset():
         
         
     def drop_users(self, users_to_drop):
-        """ Drop given users from all the dataset """
+        """ Drop given set of users from all the dataset """
         
         self.ratings = self.ratings[~ self.ratings.userID.isin(users_to_drop)]
         self.friends.drop(users_to_drop, inplace=True)
@@ -125,30 +135,30 @@ class Dataset():
     def normalize_weights(self):
         # Normalize weights for each user
         group = self.ratings[['userID', 'weight']].groupby('userID')
+        # Divide each weight by the maximum weight of the corresponding user
         tots = group.max().weight.to_dict()
         self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID])
         
-#        # Extract ratings based on quartiles for all ratings
-#        group = self.ratings.groupby('userID').weight
-#        # Sort ratings from 1 to 5
-#        self.ratings.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
-#        # Normalize test ratings using the updated weights
-#        self.test = self.ratings.iloc[self.ratings.index.isin(self.test.index)]
-#        
-#        # Extract ratings based on quartiles for the train ratings
-#        group = self.train.groupby('userID').weight
-#        # Sort ratings from 1 to 5
-#        self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n] * 4 + 1
-        
-        
     def build_art_user(self, train_only=False):
         """ Build artist_user adjacency matrix using weights """
-        user_artist_matrix = pickle.load(open('art_user.pickle', 'rb'))
+        art_user = np.zeros((self.nart, self.nuser))
         
-        return user_artist_matrix
+        # Choose as iterator all the ratings or only the ratings in the train
+        if train_only:
+            iterator = self.train
+        else:
+            iterator = self.ratings
+        
+        # Build matrix
+        for index, row in iterator.iterrows():
+            apos = self.get_artistPOS(row.artistID)
+            upos = self.get_userPOS(row.userID)
+            art_user[apos,upos] = row.weight
+            
+        return art_user
     
     def split(self, test_ratio=0.2, seed=None):
-        """ Split data in trainset and testset """
+        """ Split data in trainset and testset for recommendation evaluation """
         N = len(self.ratings)
         shuffled = self.ratings.sample(frac=1, random_state=seed)
         self.train = shuffled.iloc[: round(N*(1-test_ratio))]
