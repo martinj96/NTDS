@@ -8,6 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 import networkx as nx
+import pickle
     
 class Dataset():
     """ This class contains the dataset and functions to elaborate it """
@@ -142,21 +143,9 @@ class Dataset():
         
     def build_art_user(self, train_only=False):
         """ Build artist_user adjacency matrix using weights """
-        art_user = np.zeros((self.nart, self.nuser))
+        user_artist_matrix = pickle.load(open('art_user.pickle', 'rb'))
         
-        # Choose as iterator all the ratings or only the ratings in the train
-        if train_only:
-            iterator = self.train
-        else:
-            iterator = self.ratings
-        
-        # Build matrix
-        for index, row in iterator.iterrows():
-            apos = self.get_artistPOS(row.artistID)
-            upos = self.get_userPOS(row.userID)
-            art_user[apos,upos] = row.weight
-            
-        return art_user
+        return user_artist_matrix
     
     def split(self, test_ratio=0.2, seed=None):
         """ Split data in trainset and testset """
