@@ -3,6 +3,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 
 def plot_weight_distribution(weights):
 	ax = plt.figure().gca()
@@ -108,3 +109,30 @@ def plot_artist_per_user(number_user_artist):
 
 	plt.figure(num=None, figsize=(12, 6), dpi=80, facecolor='w', edgecolor='k')
 	number_user_artist['artistID'].plot.hist(bins=10)
+    
+def plot_rmse():
+    fp = open('./data/RMSE_plots.pickle', 'rb')
+    art_net, friend_net, no_net = pickle.load(fp)
+    fp.close()
+    
+    _, ax = plt.subplots(1,3, figsize=(16,8))
+    ax[0].semilogx(*art_net)
+    ax[0].set_title('artist smooth')
+    ax[0].set_xlabel('alpha')
+    ax[0].set_ylabel('RMSE')
+    ax[0].grid()
+    ax[1].semilogx(*friend_net)
+    ax[1].set_title('user smooth')
+    ax[1].set_xlabel('alpha')
+    ax[1].set_ylabel('RMSE')
+    ax[1].grid()
+    ax[2].semilogx(*no_net)
+    ax[2].set_title('no smooth')
+    ax[2].set_xlabel('alpha')
+    ax[2].set_ylabel('RMSE')
+    ax[2].grid()
+    
+    print('RMSE on smooth MF over artists: ', 0.9067)
+    print('RMSE on smooth MF over users: ', 0.9074)
+    print('RMSE on classic SVD: ', 0.9068)
+    print('RMSE on global mean estimator: ', 1.0721)
