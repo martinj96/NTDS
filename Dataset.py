@@ -132,12 +132,40 @@ class Dataset():
         self._userID2POS = {i:p for p,i in enumerate(self.users)}
         self._userPOS2ID = {p:i for p,i in enumerate(self.users)}
         
-    def normalize_weights(self):
-        # Normalize weights for each user
-        group = self.ratings[['userID', 'weight']].groupby('userID')
-        # Divide each weight by the maximum weight of the corresponding user
-        tots = group.max().weight.to_dict()
-        self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID])
+    def normalize_weights(self, mode='max'):
+        """ Normalize weight with the chosen mode
+            
+            Args:
+                mode: 'max', 'sum', 'quartile'.
+        """
+    
+        if mode == 'max':
+            # Normalize weights for each user
+            group = self.ratings[['userID', 'weight']].groupby('userID')
+            # Divide each weight by the maximum weight of the corresponding user
+            tots = group.max().weight.to_dict()
+            self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID])
+        elif mode == 'sum':
+            # Normalize weights for each user
+            group = self.ratings[['userID', 'weight']].groupby('userID')
+            # Divide each weight by the maximum weight of the corresponding user
+            tots = group.sum().weight.to_dict()
+            self.ratings.weight = (self.ratings.weight / [tots[u] for u in self.ratings.userID])
+        elif mode == 'quartile':
+            # Extract ratings based on quartiles for all ratings
+            group = self.ratings.groupby('userID').weight
+            # Sort ratings from 1 to 5
+            self.ratings.weight = group.rank() / [l for n in group.size() for l in [n]*n]
+            # Normalize test ratings using the updated weights
+            self.test = self.ratings.iloc[self.ratings.index.isin(self.test.index)]
+         
+            # Extract ratings based on quartiles for the train ratings
+            group = self.train.groupby('userID').weight
+            # Sort ratings from 1 to 5
+            self.train.weight = group.rank() / [l for n in group.size() for l in [n]*n]
+        else:
+            raise NameError('Mode is max, min or quartile')
+            
         
     def build_art_user(self, train_only=False):
         """ Build artist_user adjacency matrix using weights """
